@@ -1,8 +1,11 @@
 package spitest;
+import com.pi4j.io.gpio.GpioController;
+import com.pi4j.io.gpio.GpioFactory;
 import com.pi4j.io.spi.SpiChannel;
 import com.pi4j.io.spi.SpiDevice;
 import com.pi4j.io.spi.SpiFactory;
 import com.pi4j.util.Console;
+import com.pi4j.io.gpio.*;
 
 import java.util.Arrays;
 
@@ -26,32 +29,32 @@ public class Test {
     // (This is a utility class to abstract some of the boilerplate code)
     protected static final Console console = new Console();
 
-    /**
-     * Sample SPI Program
-     *
-     * @param args (none)
-     * @throws InterruptedException
-     * @throws IOException
-     */
+    // SPI operations
+    public static byte WRITE_CMD = 0x40;
+    public static byte READ_CMD  = 0x41;
+
+    public static int BG_CS_FRONT_BCM = 7;
+    public static int BG_CS_BACK_BCM = 8;
+
+    public static byte REG_ID = 0x00;
+    public static byte REG_DATA_READY = 0x02;
+    public static byte REG_MOTION_BURST = 0x16;
+    public static byte REG_POWER_UP_RESET = 0x3a;
+    public static byte REG_ORIENTATION = 0x5b;
+    public static byte REG_RESOLUTION = 0x4e;  // PAA5100 only
+
+    public static byte REG_RAWDATA_GRAB = 0x58;
+    public static byte REG_RAWDATA_GRAB_STATUS = 0x59;
+
     public static void main(String args[]) throws InterruptedException, IOException {
 
-        // print program title/header
-        console.title("<-- The Pi4J Project -->", "SPI test program using MCP3004/MCP3008 AtoD Chip");
+        // GpioController gpio = GpioFactory.getInstance();
+        // GpioPinDigitalOutput outputPin = gpio.provisionDigitalOutputPin(RaspiPin.getPinByAddress(BG_CS_FRONT_BCM), PinState.LOW);
+        // Thread.sleep(50);
+        // outputPin.high();
 
-        // allow for user to exit program using CTRL-C
-        console.promptForExit();
 
-        // This SPI example is using the Pi4J SPI interface to communicate with
-        // the SPI hardware interface connected to a MCP3004/MCP3008 AtoD Chip.
-        //
-        // Please make sure the SPI is enabled on your Raspberry Pi via the
-        // raspi-config utility under the advanced menu option.
-        //
-        // see this blog post for additional details on SPI and WiringPi
-        // http://wiringpi.com/reference/spi-library/
-        //
-        // see the link below for the data sheet on the MCP3004/MCP3008 chip:
-        // http://ww1.microchip.com/downloads/en/DeviceDoc/21294E.pdf
+        
 
         // create SPI object instance for SPI for communication
         spi = SpiFactory.getInstance(SpiChannel.CS1,
