@@ -1,4 +1,4 @@
-package spitest;
+
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -119,14 +119,14 @@ public class PMW3901 {
         write(REG_ORIENTATION, value);   
     }
 
-    private short[] read(int register) {
+    private short read(int register) {
         spi_cs_gpio_output.low();
         short[] buf = new short[2];
         buf[0] = (short) register;
         buf[1] = 0;
         Spi.wiringPiSPIDataRW(0, buf);
         spi_cs_gpio_output.high();
-        return buf;
+        return buf[1];
     }
 
     private void write(int register, int value) {
@@ -152,7 +152,7 @@ public class PMW3901 {
     }
 
     private void bulk_write(int[] data) {
-        for(int i = 0; i < data.length; i += 2) {
+        for(int i = 0; i < data.length - 1; i += 2) {
             short register = (short) data[i];
             short value = (short) data[i+1];
 
@@ -181,7 +181,7 @@ public class PMW3901 {
             0x7f, 0x0e,
             0x43, 0x10
         });
-        if((read(0x67)[0] & 0b10000000) == 1)
+        if((read(0x67) & 0b10000000) > 0)
             write(0x48, 0x04);
         else
             write(0x48, 0x02);
@@ -193,9 +193,9 @@ public class PMW3901 {
             0x55, 0x00,
             0x7f, 0x0E
         });
-        if(read(0x73)[0] > 0x00) {
-            int c1 = read(0x70)[0];
-            int c2 = read(0x71)[0];
+        if(read(0x73) > 0x00) {
+            int c1 = read(0x70);
+            int c2 = read(0x71);
             if(c1 <= 28)
                 c1 += 14;
             if (c1 > 28)
@@ -303,11 +303,11 @@ public class PMW3901 {
         });
     }
 
-    public void get_motion() throws Exception {
-        get_motion(5);
+    public short[] get_motion() throws Exception {
+        return get_motion(5000);
     }
 
-    public void get_motion(int timeout) throws Exception {
+    public short[] get_motion(int timeout) throws Exception {
         /**Get motion data from PMW3901 using burst read.
         Reads 12 shorts sequentially from the PMW3901 and validates
         motion data against the SQUAL and Shutter_Upper values.
@@ -318,29 +318,32 @@ public class PMW3901 {
         long t_start = System.currentTimeMillis();
         while(System.currentTimeMillis() - t_start < timeout) {
             spi_cs_gpio_output.low();
-            short[] xfer2_data = new short[13];
-            xfer2_data[0] = (short) REG_MOTION_BURST;
+            byte[] xfer2_data = new byte[13];
+            xfer2_data[0] = (byte) REG_MOTION_BURST;
             int error = Spi.wiringPiSPIDataRW(0, xfer2_data);
             if(error == -1)
                 throw new Exception("Error while reading from motion burst register");
             spi_cs_gpio_output.high();
 
-            // JBBPFieldStruct parsed = null;
-            // try {
-            //     parsed = JBBPParser.prepare("<ubyte[3] first; short[2] xy; ubyte[6] last;").parse(new ByteArrayInputStream(xfer2_data));
-            // } catch (IOException e1) {
-            //     // TODO Auto-generated catch block
-            //     e1.printStackTrace();
-            // }
-            // short[] xy = parsed.findFieldForType(JBBPFieldArrayShort.class).getArray();
-            // byte[] first = parsed.findFieldForNameAndType("first", JBBPFieldArrayByte.class).getArray();
-            // byte[] last = parsed.findFieldForNameAndType("last", JBBPFieldArrayByte.class).getArray();
+            JBBPFieldStruct parsed = null;
+            try {
+                parsed = JBBPParser.prepare("<byte[3] first; <short[2] xy; <byte[6] last;").parse(new ByteArrayInputStream(xfer2_data));
+            } catch (IOException e1) {
+                // TODO Auto-generated catch block
+                e1.printStackTrace();
+            }
+            
+            // [_, dr, obs]
+            byte[] first = parsed.findFieldForNameAndType("first", JBBPFieldArrayByte.class).getArray();
 
-            // if((first[1] & 0b10000000) > 0 && !(last[0] < 0x19 && last[4] == 0x1f))
-            //     return xy;
+            // [x, y]
+            short[] xy = parsed.findFieldForNameAndType("xy", JBBPFieldArrayShort.class).getArray();
 
-            System.out.println(Arrays.toString(new short[] {xfer2_data[3], xfer2_data[4]}));
+            // [quality, raw_sum, raw_max, raw_min, shutter_upper, shutter_lower]
+            byte[] last = parsed.findFieldForNameAndType("last", JBBPFieldArrayByte.class).getArray();
 
+            if((first[1] & 0b10000000) > 0 && !(last[0] < 0x19 && last[4] == 0x1f))
+                return xy;
 
             try {
                 Thread.sleep(10);
@@ -348,8 +351,6 @@ public class PMW3901 {
                 // TODO Auto-generated catch block
                 e.printStackTrace();
             }
-
-            return;
         }
         throw new Exception("Timed out waiting for motion data.");
     }
