@@ -1,24 +1,22 @@
 package spitest;
 
-import com.pi4j.io.spi.SpiDevice;
-
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.util.Arrays;
 
 import com.pi4j.io.gpio.GpioController;
 import com.pi4j.io.gpio.GpioFactory;
 import com.pi4j.io.gpio.GpioPinDigitalOutput;
 import com.pi4j.io.gpio.PinState;
 import com.pi4j.io.gpio.RaspiPin;
-import com.pi4j.io.spi.SpiChannel;
-import com.pi4j.io.spi.SpiFactory;
 import com.pi4j.wiringpi.Spi;
 
+import com.igormaznitsa.jbbp.JBBPParser;
+import com.igormaznitsa.jbbp.model.JBBPFieldArrayByte;
+import com.igormaznitsa.jbbp.model.JBBPFieldArrayShort;
+import com.igormaznitsa.jbbp.model.JBBPFieldStruct;
+
 public class PMW3901 {
-
-
-    // SPI operations
-    public static byte WRITE_CMD = 0x40;
-    public static byte READ_CMD  = 0x41;
 
     public static int WAIT = -1;
 
@@ -38,13 +36,14 @@ public class PMW3901 {
     private int spi_cs_gpio;
     GpioPinDigitalOutput spi_cs_gpio_output;
 
-    public PMW3901(int spi_port, int spi_cs, int spi_cs_gpio) {
-        if(spi_cs_gpio == -1)
-            this.spi_cs_gpio = BG_CS_FRONT_BCM;
-        else
-            this.spi_cs_gpio = spi_cs_gpio;
+    public PMW3901(int spi_port, int spi_cs) throws Exception{
+        this(spi_port, spi_cs, BG_CS_FRONT_BCM);
+    }
+
+    public PMW3901(int spi_port, int spi_cs, int _spi_cs_gpio) throws Exception {
+        spi_cs_gpio = _spi_cs_gpio;
         
-        int fd = Spi.wiringPiSPISetup(0, 400000);
+        int fd = Spi.wiringPiSPISetupMode(0, 400000, 3);
         if (fd <= -1) {
             System.out.println(" ==>> SPI SETUP FAILED");
             return;
@@ -52,6 +51,7 @@ public class PMW3901 {
 
         GpioController gpio = GpioFactory.getInstance();
         spi_cs_gpio_output = gpio.provisionDigitalOutputPin(RaspiPin.getPinByAddress(spi_cs_gpio), PinState.LOW);
+        
         spi_cs_gpio_output.low();
         try {
             Thread.sleep(50);
@@ -71,27 +71,33 @@ public class PMW3901 {
         for(int offset = 0; offset < 5; offset++)
             read(REG_DATA_READY + offset);
 
-        _secret_sauce();
+        secret_sauce();
 
-        int[] id = self.get_id()
-        if id[0] != 0x49 or id[1] != 0x00:
-            raise RuntimeError("Invalid Product ID or Revision for PMW3901: 0x{:02x}/0x{:02x}".format(product_id, revision))
+        short[] id = null;
+        try {
+            id = get_id();
+        } catch (Exception e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
+        if(id[0] != 0x49 || id[1] != 0x00)
+            throw new Exception(String.format("Invalid Product ID or Revision for PMW3901: 0%d/0x%d", (int) id[0], (int) id[1]));
 
     }
 
-    public void get_id(){
-        return read(REG_ID, 2);
+    public short[] get_id() throws Exception{
+        return bulk_read(REG_ID, 2);
     }
 
     public void set_rotation(float degrees) {
         if (degrees == 0)
-            set_orientation(True, True, True);
+            set_orientation(true, true, true);
         else if (degrees == 90)
-            set_orientation(False, True, False);
+            set_orientation(false, true, false);
         else if (degrees == 90)
-            set_orientation(False, False, True);
+            set_orientation(false, false, true);
         else if (degrees == 90)
-            set_orientation(True, False, False);
+            set_orientation(true, false, false);
         else
             throw new IllegalArgumentException("Degrees must be one of 0, 90, 180, or 270");
     }
@@ -113,54 +119,46 @@ public class PMW3901 {
         write(REG_ORIENTATION, value);   
     }
 
-    // private void write(int register, int value) {
-    //     spi_cs_gpio_output.low();
-    //     byte[] packet = new byte[] {
-    //         WRITE_CMD,
-    //         (byte) register,
-    //         (byte) value
-    //     };
-    //     try {
-    //         spi_dev.write(packet);
-    //     } catch (IOException e) {
-    //         // TODO Auto-generated catch block
-    //         e.printStackTrace();
-    //     }
-    //     spi_cs_gpio_output.high();
-    // }
+    private short[] read(int register) {
+        spi_cs_gpio_output.low();
+        short[] buf = new short[2];
+        buf[0] = (short) register;
+        buf[1] = 0;
+        Spi.wiringPiSPIDataRW(0, buf);
+        spi_cs_gpio_output.high();
+        return buf;
+    }
 
     private void write(int register, int value) {
         spi_cs_gpio_output.low();
-        
+        Spi.wiringPiSPIDataRW(0, new short[] {(short) (register | 0x80), (short) value});
         spi_cs_gpio_output.high();
     }
 
-    private byte[] read(int register) {
-        spi_cs_gpio_output.low();
-        byte[] packet = new byte[] {
-            READ_CMD,
-            (byte) register,
-            0b00000000
-        };
-        byte[] result = null;
-        try {
-            result = spi_dev.write(packet);
-        } catch (IOException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
+    private short[] bulk_read(int register, int length) throws Exception {
+        short[] result = new short[length];
+        for(int i = 0; i < length; i++) {
+            spi_cs_gpio_output.low();
+            short[] buf = new short[2];
+            buf[0] = (short) (register + i);
+            buf[1] = 0;
+            int error = Spi.wiringPiSPIDataRW(0, buf);
+            if(error == -1)
+                throw new Exception(String.format("Error while reading from register %d", register));
+            result[i] = buf[1];
+            spi_cs_gpio_output.high();
         }
-        spi_cs_gpio_output.high();
         return result;
     }
 
     private void bulk_write(int[] data) {
         for(int i = 0; i < data.length; i += 2) {
-            byte register = (byte) data[i];
-            byte value = (byte) data[i+1];
+            short register = (short) data[i];
+            short value = (short) data[i+1];
 
             if((int) register == WAIT)
                 try {
-                    Thread.sleep(value);
+                    Thread.sleep((long) value);
                 } catch (InterruptedException e) {
                     // TODO Auto-generated catch block
                     e.printStackTrace();
@@ -195,7 +193,7 @@ public class PMW3901 {
             0x55, 0x00,
             0x7f, 0x0E
         });
-        if(read(0x73)[0] == 0x00) {
+        if(read(0x73)[0] > 0x00) {
             int c1 = read(0x70)[0];
             int c2 = read(0x71)[0];
             if(c1 <= 28)
@@ -305,9 +303,13 @@ public class PMW3901 {
         });
     }
 
-    public double[] get_motion(int timeout) {
+    public void get_motion() throws Exception {
+        get_motion(5);
+    }
+
+    public void get_motion(int timeout) throws Exception {
         /**Get motion data from PMW3901 using burst read.
-        Reads 12 bytes sequentially from the PMW3901 and validates
+        Reads 12 shorts sequentially from the PMW3901 and validates
         motion data against the SQUAL and Shutter_Upper values.
         Returns Delta X and Delta Y indicating 2d flow direction
         and magnitude.
@@ -315,19 +317,39 @@ public class PMW3901 {
         **/
         long t_start = System.currentTimeMillis();
         while(System.currentTimeMillis() - t_start < timeout) {
-            // self.cs_pin.reset()
-            // data = self.spi_dev.xfer2([REG_MOTION_BURST] + [0 for x in range(12)])
-            // self.cs_pin.set()
-            // (_, dr, obs,
-            //  x, y, quality,
-            //  raw_sum, raw_max, raw_min,
-            //  shutter_upper,
-            //  shutter_lower) = struct.unpack("<BBBhhBBBBBB", bytearray(data))
+            spi_cs_gpio_output.low();
+            short[] xfer2_data = new short[13];
+            xfer2_data[0] = (short) REG_MOTION_BURST;
+            int error = Spi.wiringPiSPIDataRW(0, xfer2_data);
+            if(error == -1)
+                throw new Exception("Error while reading from motion burst register");
+            spi_cs_gpio_output.high();
 
-            // if dr & 0b10000000 and not (quality < 0x19 and shutter_upper == 0x1f):
-            //     return x, y
+            // JBBPFieldStruct parsed = null;
+            // try {
+            //     parsed = JBBPParser.prepare("<ubyte[3] first; short[2] xy; ubyte[6] last;").parse(new ByteArrayInputStream(xfer2_data));
+            // } catch (IOException e1) {
+            //     // TODO Auto-generated catch block
+            //     e1.printStackTrace();
+            // }
+            // short[] xy = parsed.findFieldForType(JBBPFieldArrayShort.class).getArray();
+            // byte[] first = parsed.findFieldForNameAndType("first", JBBPFieldArrayByte.class).getArray();
+            // byte[] last = parsed.findFieldForNameAndType("last", JBBPFieldArrayByte.class).getArray();
 
-            Thread.sleep(10);
+            // if((first[1] & 0b10000000) > 0 && !(last[0] < 0x19 && last[4] == 0x1f))
+            //     return xy;
+
+            System.out.println(Arrays.toString(new short[] {xfer2_data[3], xfer2_data[4]}));
+
+
+            try {
+                Thread.sleep(10);
+            } catch (InterruptedException e) {
+                // TODO Auto-generated catch block
+                e.printStackTrace();
+            }
+
+            return;
         }
         throw new Exception("Timed out waiting for motion data.");
     }
