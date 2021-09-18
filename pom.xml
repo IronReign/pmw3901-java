@@ -4,13 +4,12 @@
   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>spitest</groupId>
-  <artifactId>demo</artifactId>
+  <groupId>org.ironreignrobotics.pmw</groupId>
+  <artifactId>pmw</artifactId>
   <version>1</version>
 
   <name>demo</name>
-  <!-- FIXME change it to the project's website -->
-  <url>http://www.example.com</url>
+  <url>http://www.ironreignrobotics.org</url>
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
