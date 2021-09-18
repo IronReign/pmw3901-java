@@ -9,14 +9,13 @@ import com.pi4j.io.gpio.GpioFactory;
 import com.pi4j.io.gpio.GpioPinDigitalOutput;
 import com.pi4j.io.gpio.PinState;
 import com.pi4j.io.gpio.RaspiPin;
-import com.pi4j.wiringpi.Spi;
 
 import com.igormaznitsa.jbbp.JBBPParser;
 import com.igormaznitsa.jbbp.model.JBBPFieldArrayByte;
 import com.igormaznitsa.jbbp.model.JBBPFieldArrayShort;
 import com.igormaznitsa.jbbp.model.JBBPFieldStruct;
 
-public class PMW3901 {
+public class PMW3901i2c {
 
     public static int WAIT = -1;
 
@@ -36,11 +35,11 @@ public class PMW3901 {
     private int spi_cs_gpio;
     GpioPinDigitalOutput spi_cs_gpio_output;
 
-    public PMW3901(int spi_port, int spi_cs) throws Exception{
+    public PMW3901i2c(int spi_port, int spi_cs) throws Exception{
         this(spi_port, spi_cs, BG_CS_FRONT_BCM);
     }
 
-    public PMW3901(int spi_port, int spi_cs, int _spi_cs_gpio) throws Exception {
+    public PMW3901i2c(int spi_port, int spi_cs, int _spi_cs_gpio) throws Exception {
         spi_cs_gpio = _spi_cs_gpio;
         
         int fd = Spi.wiringPiSPISetupMode(0, 400000, 3);
