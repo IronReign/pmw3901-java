@@ -9,6 +9,9 @@ import com.pi4j.io.gpio.GpioFactory;
 import com.pi4j.io.gpio.GpioPinDigitalOutput;
 import com.pi4j.io.gpio.PinState;
 import com.pi4j.io.gpio.RaspiPin;
+import com.pi4j.io.i2c.I2CBus;
+import com.pi4j.io.i2c.I2CDevice;
+import com.pi4j.io.i2c.I2CFactory;
 
 import com.igormaznitsa.jbbp.JBBPParser;
 import com.igormaznitsa.jbbp.model.JBBPFieldArrayByte;
@@ -34,6 +37,9 @@ public class PMW3901i2c {
 
     private int spi_cs_gpio;
     GpioPinDigitalOutput spi_cs_gpio_output;
+    I2CDevice device;
+
+    JBBPParser parser;
 
     public PMW3901i2c(int spi_port, int spi_cs) throws Exception{
         this(spi_port, spi_cs, BG_CS_FRONT_BCM);
@@ -42,11 +48,14 @@ public class PMW3901i2c {
     public PMW3901i2c(int spi_port, int spi_cs, int _spi_cs_gpio) throws Exception {
         spi_cs_gpio = _spi_cs_gpio;
         
-        int fd = Spi.wiringPiSPISetupMode(0, 400000, 3);
-        if (fd <= -1) {
-            System.out.println(" ==>> SPI SETUP FAILED");
-            return;
-        }
+        I2CBus i2c = I2CFactory.getInstance(I2CBus.BUS_1);
+        device = i2c.getDevice(0B0101000);
+
+        byte clk = (byte)((byte) SC18IS602B.SC18IS602B_SPI_Speed.SC18IS602B_SPICLK_1843_kHz.speed & 0B11);
+        byte configByte = (byte) (((byte) (0 << 5)) | ((byte) (SC18IS602B.SC18IS602B_SPI_Mode.SC18IS602B_SPIMODE_3.mode << 2)) | clk);
+
+        device.write(SC18IS602B.SC18IS601B_CONFIG_SPI_CMD);
+        device.write(configByte);
 
         GpioController gpio = GpioFactory.getInstance();
         spi_cs_gpio_output = gpio.provisionDigitalOutputPin(RaspiPin.getPinByAddress(spi_cs_gpio), PinState.LOW);
@@ -82,6 +91,7 @@ public class PMW3901i2c {
         if(id[0] != 0x49 || id[1] != 0x00)
             throw new Exception(String.format("Invalid Product ID or Revision for PMW3901: 0%d/0x%d", (int) id[0], (int) id[1]));
 
+        parser = JBBPParser.prepare("<byte[3] first; <short[2] xy; <byte[6] last;");
     }
 
     public byte[] get_id() throws Exception{
@@ -118,19 +128,35 @@ public class PMW3901i2c {
         write(REG_ORIENTATION, value);   
     }
 
+    private int spiTransfer(int slaveNum, byte[] txData) {
+        byte functionID = (byte) (1 << (byte) slaveNum);
+
+        try {
+            device.write(functionID);
+            device.write(txData);
+            device.read(txData, 0, txData.length);
+        } catch (IOException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+            return -1;
+        }
+        return 0;
+        
+    }
+
     private byte read(int register) {
         spi_cs_gpio_output.low();
         byte[] buf = new byte[2];
         buf[0] = (byte) register;
         buf[1] = 0;
-        Spi.wiringPiSPIDataRW(0, buf);
+        spiTransfer(0, buf);
         spi_cs_gpio_output.high();
         return buf[1];
     }
 
     private void write(int register, int value) {
         spi_cs_gpio_output.low();
-        Spi.wiringPiSPIDataRW(0, new byte[] {(byte) (register | 0x80), (byte) value});
+        spiTransfer(0, new byte[] {(byte) (register | 0x80), (byte) value});
         spi_cs_gpio_output.high();
     }
 
@@ -141,7 +167,7 @@ public class PMW3901i2c {
             byte[] buf = new byte[2];
             buf[0] = (byte) (register + i);
             buf[1] = 0;
-            int error = Spi.wiringPiSPIDataRW(0, buf);
+            int error = spiTransfer(0, buf);
             if(error == -1)
                 throw new Exception(String.format("Error while reading from register %d", register));
             result[i] = buf[1];
@@ -316,14 +342,14 @@ public class PMW3901i2c {
             spi_cs_gpio_output.low();
             byte[] xfer2_data = new byte[13];
             xfer2_data[0] = (byte) REG_MOTION_BURST;
-            int error = Spi.wiringPiSPIDataRW(0, xfer2_data);
+            int error = spiTransfer(0, xfer2_data);
             if(error == -1)
                 throw new Exception("Error while reading from motion burst register");
             spi_cs_gpio_output.high();
 
             JBBPFieldStruct parsed = null;
             try {
-                parsed = JBBPParser.prepare("<byte[3] first; <short[2] xy; <byte[6] last;").parse(new ByteArrayInputStream(xfer2_data));
+                parsed = parser.parse(new ByteArrayInputStream(xfer2_data));
             } catch (IOException e1) {
                 // TODO Auto-generated catch block
                 e1.printStackTrace();

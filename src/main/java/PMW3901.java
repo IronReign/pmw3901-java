@@ -36,6 +36,8 @@ public class PMW3901 {
     private int spi_cs_gpio;
     GpioPinDigitalOutput spi_cs_gpio_output;
 
+    JBBPParser parser;
+
     public PMW3901(int spi_port, int spi_cs) throws Exception{
         this(spi_port, spi_cs, BG_CS_FRONT_BCM);
     }
@@ -83,6 +85,7 @@ public class PMW3901 {
         if(id[0] != 0x49 || id[1] != 0x00)
             throw new Exception(String.format("Invalid Product ID or Revision for PMW3901: 0%d/0x%d", (int) id[0], (int) id[1]));
 
+        parser = JBBPParser.prepare("<byte[3] first; <short[2] xy; <byte[6] last;");
     }
 
     public byte[] get_id() throws Exception{
@@ -324,7 +327,7 @@ public class PMW3901 {
 
             JBBPFieldStruct parsed = null;
             try {
-                parsed = JBBPParser.prepare("<byte[3] first; <short[2] xy; <byte[6] last;").parse(new ByteArrayInputStream(xfer2_data));
+                parsed = parser.parse(new ByteArrayInputStream(xfer2_data));
             } catch (IOException e1) {
                 // TODO Auto-generated catch block
                 e1.printStackTrace();

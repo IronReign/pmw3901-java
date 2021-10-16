@@ -45,7 +45,6 @@ public class Test extends JPanel {
         while(true) {
             test.updatePosition();
             test.repaint();
-            Thread.sleep(10);
         }
     }
 }
